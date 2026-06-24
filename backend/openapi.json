@@ -1,0 +1,614 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Urban Air Quality Forecasting API",
+    "summary": "Live, reliability-first air-quality forecasts with baseline + freshness honesty.",
+    "description": "Contract-first API. Every forecast carries a freshness timestamp (HL1), a persistence baseline + beats_baseline flag (HL2), per-point interpolation flags (HL3), and a not-medical-guidance disclaimer (HL4).",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness and data freshness",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stations": {
+      "get": {
+        "tags": [
+          "stations"
+        ],
+        "summary": "List monitoring stations",
+        "operationId": "list_stations_stations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Station"
+                  },
+                  "type": "array",
+                  "title": "Response List Stations Stations Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/forecast": {
+      "get": {
+        "tags": [
+          "forecast"
+        ],
+        "summary": "Forecast for a station",
+        "operationId": "get_forecast_forecast_get",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Station id from /stations.",
+              "title": "Station Id"
+            },
+            "description": "Station id from /stations."
+          },
+          {
+            "name": "pollutant",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pollutant",
+              "description": "Pollutant to forecast.",
+              "default": "pm25"
+            },
+            "description": "Pollutant to forecast."
+          },
+          {
+            "name": "horizon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Hours ahead (1..max_horizon).",
+              "default": 24,
+              "title": "Horizon"
+            },
+            "description": "Hours ahead (1..max_horizon)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AQICategory": {
+        "type": "string",
+        "enum": [
+          "good",
+          "moderate",
+          "unhealthy_sensitive",
+          "unhealthy",
+          "very_unhealthy",
+          "hazardous"
+        ],
+        "title": "AQICategory",
+        "description": "US EPA AQI categories (display + color encoding only \u2014 see HL4)."
+      },
+      "Coordinates": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lat",
+          "lon"
+        ],
+        "title": "Coordinates"
+      },
+      "DataSource": {
+        "type": "string",
+        "enum": [
+          "live",
+          "seed",
+          "cache"
+        ],
+        "title": "DataSource",
+        "description": "Provenance of a payload so the UI can be honest about what it shows."
+      },
+      "ForecastPoint": {
+        "properties": {
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Value",
+            "description": "Predicted concentration; never negative."
+          },
+          "lower": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Lower",
+            "description": "Confidence-interval lower bound."
+          },
+          "upper": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Upper",
+            "description": "Confidence-interval upper bound."
+          },
+          "baseline": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Baseline",
+            "description": "HL2 \u2014 persistence-baseline value at this ts."
+          },
+          "aqi": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Aqi"
+          },
+          "category": {
+            "$ref": "#/components/schemas/AQICategory"
+          },
+          "interpolated": {
+            "type": "boolean",
+            "title": "Interpolated",
+            "description": "HL3 \u2014 true if derived from imputed inputs."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ts",
+          "value",
+          "lower",
+          "upper",
+          "baseline",
+          "aqi",
+          "category",
+          "interpolated"
+        ],
+        "title": "ForecastPoint"
+      },
+      "ForecastResponse": {
+        "properties": {
+          "station_id": {
+            "type": "string",
+            "title": "Station Id"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "pollutant": {
+            "$ref": "#/components/schemas/Pollutant"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "horizon_hours": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Horizon Hours"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "data_as_of": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Data As Of",
+            "description": "HL1 \u2014 freshness of the inputs."
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "description": "HL1."
+          },
+          "data_source": {
+            "$ref": "#/components/schemas/DataSource"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version",
+            "description": "HL2 \u2014 identifies the serving model."
+          },
+          "baseline_label": {
+            "type": "string",
+            "title": "Baseline Label",
+            "description": "HL2 \u2014 name of the baseline (e.g. 'persistence')."
+          },
+          "beats_baseline": {
+            "type": "boolean",
+            "title": "Beats Baseline",
+            "description": "HL2 \u2014 whether the model beats the baseline on the validation window."
+          },
+          "disclaimer": {
+            "type": "string",
+            "title": "Disclaimer",
+            "description": "HL4 \u2014 not-medical-guidance notice."
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_id",
+          "station_name",
+          "pollutant",
+          "unit",
+          "horizon_hours",
+          "generated_at",
+          "data_as_of",
+          "stale",
+          "data_source",
+          "model_version",
+          "baseline_label",
+          "beats_baseline",
+          "disclaimer",
+          "points"
+        ],
+        "title": "ForecastResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Time"
+          },
+          "uptime_seconds": {
+            "type": "number",
+            "title": "Uptime Seconds"
+          },
+          "last_refresh": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Refresh",
+            "description": "When forecasts were last refreshed; null before Phase 1."
+          },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
+          "upstreams": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderHealth"
+            },
+            "type": "array",
+            "title": "Upstreams"
+          },
+          "cache_hit_rate": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Hit Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "time",
+          "uptime_seconds",
+          "upstreams"
+        ],
+        "title": "HealthResponse"
+      },
+      "LatestReading": {
+        "properties": {
+          "pollutant": {
+            "$ref": "#/components/schemas/Pollutant"
+          },
+          "value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Value",
+            "description": "Concentration; never negative."
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "aqi": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Aqi"
+          },
+          "category": {
+            "$ref": "#/components/schemas/AQICategory"
+          },
+          "interpolated": {
+            "type": "boolean",
+            "title": "Interpolated",
+            "description": "HL3 \u2014 true if imputed, not measured."
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Observed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pollutant",
+          "value",
+          "unit",
+          "aqi",
+          "category",
+          "interpolated",
+          "observed_at"
+        ],
+        "title": "LatestReading",
+        "description": "Most recent observed value for one pollutant at a station."
+      },
+      "Pollutant": {
+        "type": "string",
+        "enum": [
+          "pm25",
+          "o3",
+          "no2"
+        ],
+        "title": "Pollutant",
+        "description": "Pollutants this app forecasts."
+      },
+      "ProviderHealth": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/UpstreamStatus"
+          },
+          "last_success": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "ProviderHealth"
+      },
+      "Station": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "country": {
+            "type": "string",
+            "title": "Country"
+          },
+          "coordinates": {
+            "$ref": "#/components/schemas/Coordinates"
+          },
+          "pollutants": {
+            "items": {
+              "$ref": "#/components/schemas/Pollutant"
+            },
+            "type": "array",
+            "title": "Pollutants"
+          },
+          "latest": {
+            "items": {
+              "$ref": "#/components/schemas/LatestReading"
+            },
+            "type": "array",
+            "title": "Latest"
+          },
+          "data_as_of": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Data As Of",
+            "description": "HL1 \u2014 freshness of this station's data."
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "description": "HL1 \u2014 true when data_as_of is older than the threshold."
+          },
+          "data_source": {
+            "$ref": "#/components/schemas/DataSource"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "city",
+          "country",
+          "coordinates",
+          "pollutants",
+          "latest",
+          "data_as_of",
+          "stale",
+          "data_source"
+        ],
+        "title": "Station"
+      },
+      "UpstreamStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "degraded",
+          "down",
+          "unknown"
+        ],
+        "title": "UpstreamStatus"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
