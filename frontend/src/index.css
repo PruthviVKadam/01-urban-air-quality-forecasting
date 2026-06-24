@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Atmosphere design tokens. Custom theme — NOT Tailwind's default palette.
+   Concept: clean-air-to-smog. Cool charcoal "night sky" neutrals, a luminous
+   "clean" accent, and an AQI hazard ramp that escalates amber → ember → violet.
+   Every AQI color is paired with a shape + label in the UI (color is never the
+   only cue — see rules.md G4).
+   ─────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --color-night-950: #070a12;
+  --color-night-900: #0b0f1a;
+  --color-night-850: #0e1422;
+  --color-night-800: #121829;
+  --color-night-700: #1b2238;
+  --color-night-600: #28304a;
+  --color-night-500: #3a4566;
+
+  --color-mist-500: #6b7aa3;
+  --color-mist-400: #8a9bc4;
+  --color-mist-300: #aebbd9;
+  --color-mist-200: #d3dbee;
+
+  --color-clean-500: #1fc7ad;
+  --color-clean-400: #36e0c8;
+  --color-clean-300: #6ff0dd;
+
+  --color-aqi-good: #2fd4b6;
+  --color-aqi-moderate: #ffd24a;
+  --color-aqi-usg: #ff9b3d;
+  --color-aqi-unhealthy: #ff5a5f;
+  --color-aqi-veryunhealthy: #c84cf0;
+  --color-aqi-hazardous: #b51e63;
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 1.25rem;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--font-sans);
+    color: var(--color-mist-200);
+    background-color: var(--color-night-950);
+    /* Layered atmosphere: two soft light sources over the night sky + grain. */
+    background-image:
+      radial-gradient(120% 90% at 12% -10%, rgba(54, 224, 200, 0.16), transparent 55%),
+      radial-gradient(90% 70% at 95% 0%, rgba(200, 76, 240, 0.12), transparent 50%),
+      linear-gradient(180deg, var(--color-night-900), var(--color-night-950));
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Subtle film grain so surfaces never look flat/templated. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-clean-400);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* Shimmer for loading skeletons; snaps off under reduced-motion. */
+@keyframes atmo-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-night-700);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(174, 187, 217, 0.08),
+    transparent
+  );
+  animation: atmo-shimmer 1.4s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
