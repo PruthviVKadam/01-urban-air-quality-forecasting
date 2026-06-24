@@ -1,0 +1,11 @@
+# Normalize line endings: store LF in the repo, check out LF everywhere.
+* text=auto eol=lf
+
+# Binary assets — never normalize.
+*.png binary
+*.jpg binary
+*.ico binary
+
+# Generated lockfiles: keep diffs but collapse them in PR review.
+package-lock.json linguist-generated=true
+uv.lock linguist-generated=true
