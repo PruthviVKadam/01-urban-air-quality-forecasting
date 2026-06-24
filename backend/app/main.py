@@ -24,11 +24,55 @@ configure_logging(settings.log_level)
 logger = logging.getLogger("uaqf")
 
 
+import asyncio
+from datetime import UTC, datetime, timedelta
+from app.ingestion.etl import run_etl
+
+async def _ingestion_loop() -> None:
+    # Brief initial delay so the app responds to /health immediately
+    await asyncio.sleep(5)
+    while True:
+        try:
+            logger.info("ingestion_starting", extra={"lookback_hours": settings.ingestion_lookback_hours})
+            now = datetime.now(UTC)
+            since = now - timedelta(hours=settings.ingestion_lookback_hours)
+            
+            # run_etl is synchronous, run it in a thread
+            report = await asyncio.to_thread(run_etl, since, now)
+            
+            # Save latest refresh details on app state
+            app.state.last_refresh = report.end_time
+            app.state.last_ingestion_report = report
+            
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.exception("ingestion_failed_unexpectedly", extra={"error": str(e)})
+            
+        # Wait for next interval
+        await asyncio.sleep(settings.ingestion_interval_minutes * 60)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.start_time = time.monotonic()
+    app.state.last_refresh = None
+    app.state.last_ingestion_report = None
+    
     logger.info("startup", extra={"app_env": settings.app_env, "version": __version__})
+    
+    task = None
+    if settings.ingestion_enabled:
+        task = asyncio.create_task(_ingestion_loop())
+        
     yield
+    
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+            
     logger.info("shutdown")
 
 

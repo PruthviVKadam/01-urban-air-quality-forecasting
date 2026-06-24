@@ -1,0 +1,26 @@
+[
+  {
+    "DateObserved": "2026-06-01",
+    "HourObserved": 13,
+    "LocalTimeZone": "EST",
+    "ReportingArea": "New York",
+    "StateCode": "NY",
+    "Latitude": 40.78,
+    "Longitude": -73.97,
+    "ParameterName": "PM2.5",
+    "AQI": 42,
+    "Category": { "Number": 1, "Name": "Good" }
+  },
+  {
+    "DateObserved": "2026-06-01",
+    "HourObserved": 13,
+    "LocalTimeZone": "EST",
+    "ReportingArea": "New York",
+    "StateCode": "NY",
+    "Latitude": 40.78,
+    "Longitude": -73.97,
+    "ParameterName": "O3",
+    "AQI": 55,
+    "Category": { "Number": 2, "Name": "Moderate" }
+  }
+]

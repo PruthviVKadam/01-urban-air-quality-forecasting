@@ -21,6 +21,9 @@ class ProviderConfig(BaseModel):
     backoff_base_s: float = 0.5
     rate_limit_per_hour: int | None = None
     cache_ttl_s: int = 900
+    # Circuit breaker: open after N consecutive failures, probe again after T seconds.
+    failure_threshold: int = 5
+    recovery_timeout_s: float = 30.0
 
 
 # Static upstream catalog. Keys are read from the env var named by ``api_key_env``.
@@ -64,6 +67,11 @@ class Settings(BaseSettings):
     forecast_latency_budget_ms: int = 800  # HL5 (p95 from cache)
     request_timeout_s: float = 5.0  # HL5
     retry_max: int = 3  # HL5
+
+    # ETL knobs (Phase 1)
+    ingestion_enabled: bool = False
+    ingestion_interval_minutes: int = 30
+    ingestion_lookback_hours: int = 48
 
     # Secrets — supplied only via env / .env (gitignored).
     openaq_api_key: str | None = None

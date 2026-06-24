@@ -26,3 +26,16 @@ CATEGORY_DESCRIPTORS: dict[str, str] = {
 
 # Phase 0 serves seed data only; the real validated model replaces this in Phase 3.
 SEED_MODEL_VERSION = "seed-0.1"
+
+# Plausible physical bounds per pollutant (low, high). Values outside are
+# quarantined, never silently dropped (HL3 / data-quality gate G1).
+PLAUSIBLE_BOUNDS: dict[Pollutant, tuple[float, float]] = {
+    Pollutant.pm25: (0.0, 1000.0),  # µg/m³
+    Pollutant.o3: (0.0, 600.0),  # ppb
+    Pollutant.no2: (0.0, 2000.0),  # ppb
+}
+
+# Series are hourly. Internal gaps up to this many hours are linearly
+# interpolated AND flagged; longer gaps are left as gaps (HL3).
+EXPECTED_FREQ_HOURS = 1
+MAX_INTERPOLATION_GAP_HOURS = 3
