@@ -15,6 +15,10 @@ venv/
 .ipynb_checkpoints/
 
 # --- Node (frontend) ---
+frontend/node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
 node_modules/
 dist/
 .vite/
@@ -23,6 +27,7 @@ dist/
 # --- Data (keep folders via .gitkeep, ignore contents) ---
 data/raw/*
 data/processed/*
+data/cache/*
 !data/**/.gitkeep
 
 # --- Models & experiment tracking (ship the model card, not the weights) ---
