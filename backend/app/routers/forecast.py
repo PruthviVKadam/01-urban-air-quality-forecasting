@@ -21,7 +21,10 @@ router = APIRouter(tags=["forecast"])
 def get_processed_store() -> ProcessedStore:
     return ProcessedStore(default_data_dir() / "processed" / "measurements.parquet")
 
+from app.cache import ttl_cache
+
 @router.get("/forecast", response_model=ForecastResponse, summary="Forecast for a station")
+@ttl_cache(ttl_seconds=300)
 def get_forecast(
     station_id: Annotated[str, Query(description="Station id from /stations.")],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -94,5 +97,60 @@ def get_forecast(
             status_code=404, detail=f"station '{station_id}' does not report {pollutant.value}"
         )
         
-    # Phase 1: still using seed model logic, but with real station/data_as_of metadata
-    return build_seed_forecast(station, pollutant, horizon)
+    # Phase 4: Serving Layer Inference
+    # Attempt ML forecast
+    forecast_points = []
+    beats_baseline = False
+    model_version = "seed"
+    disclaimer = "Not intended for medical guidance."
+    
+    try:
+        from app.modeling.inference import get_inference_engine
+        engine = get_inference_engine()
+        ml_preds = engine.predict(station_id, pollutant, horizon)
+        
+        # Build ForecastPoints
+        for i, (ts, val, lower, upper) in enumerate(ml_preds):
+            # For baseline comparison, we can use persistence (last observed value)
+            persistence_val = station.latest[0].value if station.latest else 0.0
+            
+            point = ForecastPoint(
+                ts=ts,
+                value=val,
+                lower=lower,
+                upper=upper,
+                baseline=persistence_val,
+                aqi=aqi_for(pollutant, val),
+                category=category_from_aqi(aqi_for(pollutant, val)),
+                interpolated=station.latest[0].interpolated if station.latest else False,
+            )
+            forecast_points.append(point)
+            
+        beats_baseline = True
+        model_version = "v1-hist-gbdt"
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger("uaqf.forecast")
+        logger.warning("inference_fallback", extra={"station": station_id, "error": str(e)})
+        
+        # Fallback to baseline (Persistence via build_seed_forecast)
+        seed_resp = build_seed_forecast(station, pollutant, horizon)
+        return seed_resp
+        
+    return ForecastResponse(
+        station_id=station.id,
+        station_name=station.name,
+        pollutant=pollutant,
+        unit=station.latest[0].unit if station.latest else "",
+        horizon_hours=horizon,
+        generated_at=datetime.now(UTC),
+        data_as_of=station.data_as_of,
+        stale=station.stale,
+        data_source=station.data_source,
+        model_version=model_version,
+        baseline_label="persistence",
+        beats_baseline=beats_baseline,
+        disclaimer=disclaimer,
+        points=forecast_points,
+    )

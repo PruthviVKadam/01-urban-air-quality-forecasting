@@ -165,6 +165,14 @@ def run_etl(since: datetime, until: datetime) -> IngestionReport:
                 # 6. Upsert to ProcessedStore
                 processed_store.upsert(interpolated_series)
 
+    # 7. Update ML Features
+    try:
+        from app.modeling.features import build_features
+        build_features()
+        logger.info("features_rebuilt")
+    except Exception as e:
+        logger.error("features_rebuild_failed", extra={"error": str(e)})
+
     report.end_time = datetime.now(UTC)
     
     logger.info(

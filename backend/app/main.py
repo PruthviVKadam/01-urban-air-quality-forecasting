@@ -88,6 +88,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from app.middleware import RequestIdMiddleware, RateLimitMiddleware
+
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,

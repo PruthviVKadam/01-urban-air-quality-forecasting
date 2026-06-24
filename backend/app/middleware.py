@@ -25,3 +25,26 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = request_id
         return response
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        from app.cache import is_rate_limited
+        from fastapi.responses import JSONResponse
+        
+        # Extract IP, fallback to 127.0.0.1
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        
+        # 120 requests per minute
+        if is_rate_limited(client_ip, max_requests=120, window_seconds=60):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": "rate_limit_exceeded",
+                    "code": "http_429",
+                    "detail": "Too many requests. Please try again later."
+                }
+            )
+            
+        return await call_next(request)
