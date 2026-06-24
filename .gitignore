@@ -1,0 +1,39 @@
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.key
+
+# --- Python (backend / ML) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Node (frontend) ---
+node_modules/
+dist/
+.vite/
+*.local
+
+# --- Data (keep folders via .gitkeep, ignore contents) ---
+data/raw/*
+data/processed/*
+!data/**/.gitkeep
+
+# --- Models & experiment tracking (ship the model card, not the weights) ---
+models/*
+!models/.gitkeep
+!models/MODEL_CARD.md
+mlruns/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
