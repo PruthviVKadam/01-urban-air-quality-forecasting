@@ -11,25 +11,28 @@ import duckdb
 
 logger = logging.getLogger("uaqf.modeling.features")
 
+
 def build_features(data_dir: Path) -> Path:
     """Builds features.parquet from processed data."""
     processed_dir = data_dir / "processed"
     features_dir = data_dir / "features"
     features_dir.mkdir(parents=True, exist_ok=True)
-    
+
     measurements_path = processed_dir / "measurements.parquet"
     weather_path = processed_dir / "weather.parquet"
     output_path = features_dir / "features.parquet"
-    
+
     if not measurements_path.exists():
         logger.warning("No measurements found. Cannot build features.")
         return output_path
-        
+
     con = duckdb.connect()
     try:
         # 1. Pivot measurements to wide format
-        con.execute(f"CREATE OR REPLACE VIEW m_long AS SELECT * FROM read_parquet('{measurements_path.as_posix()}')")
-        
+        con.execute(
+            f"CREATE OR REPLACE VIEW m_long AS SELECT * FROM read_parquet('{measurements_path.as_posix()}')"
+        )
+
         # We need a list of pollutants dynamically or statically. We know our target pollutants: pm25, o3, no2
         # Pivot syntax: PIVOT m_long ON pollutant USING first(value) GROUP BY station_id, ts
         con.execute("""
@@ -39,14 +42,18 @@ def build_features(data_dir: Path) -> Path:
             USING first(value) 
             GROUP BY station_id, ts
         """)
-        
+
         # Check if weather exists
         has_weather = weather_path.exists()
         if has_weather:
-            con.execute(f"CREATE OR REPLACE VIEW w AS SELECT * FROM read_parquet('{weather_path.as_posix()}')")
+            con.execute(
+                f"CREATE OR REPLACE VIEW w AS SELECT * FROM read_parquet('{weather_path.as_posix()}')"
+            )
         else:
-            con.execute("CREATE OR REPLACE VIEW w AS SELECT '' as station_id, current_timestamp as ts, 0.0 as temperature_c, 0.0 as humidity_pct, 0.0 as wind_speed_ms, 0.0 as pressure_hpa WHERE 1=0")
-            
+            con.execute(
+                "CREATE OR REPLACE VIEW w AS SELECT '' as station_id, current_timestamp as ts, 0.0 as temperature_c, 0.0 as humidity_pct, 0.0 as wind_speed_ms, 0.0 as pressure_hpa WHERE 1=0"
+            )
+
         # 2. Join & Extract Time Features
         # DuckDB has date_part('hour', ts) and date_part('isodow', ts) (1=Mon, 7=Sun)
         # To avoid division by zero or errors, ensure types are float
@@ -69,10 +76,10 @@ def build_features(data_dir: Path) -> Path:
                 ON m.station_id = w.station_id 
                 AND m.ts = w.ts
         """)
-        
+
         # 3. Add cyclical encodings & Lags
         # pi() is available in duckdb
-        query = f"""
+        query = """
             SELECT 
                 *,
                 sin(hour_of_day * pi() / 12) as sin_hour,
@@ -99,15 +106,17 @@ def build_features(data_dir: Path) -> Path:
                 w_time AS (PARTITION BY station_id ORDER BY ts),
                 w_roll_24 AS (PARTITION BY station_id ORDER BY ts ROWS BETWEEN 23 PRECEDING AND CURRENT ROW)
         """
-        
+
         # Export to parquet
         logger.info("Writing features to parquet...")
         con.execute(f"COPY ({query}) TO '{output_path.as_posix()}' (FORMAT PARQUET)")
-        
+
         # Get count
-        count = con.execute(f"SELECT count(*) FROM read_parquet('{output_path.as_posix()}')").fetchone()[0]
+        count = con.execute(
+            f"SELECT count(*) FROM read_parquet('{output_path.as_posix()}')"
+        ).fetchone()[0]
         logger.info("features_built", extra={"rows": count, "path": output_path.as_posix()})
-        
+
         return output_path
     finally:
         con.close()

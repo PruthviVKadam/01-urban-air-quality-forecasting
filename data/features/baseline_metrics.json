@@ -1,0 +1,32 @@
+{
+  "pm25": {
+    "persistence": {
+      "mae": 2.25,
+      "rmse": 2.25
+    },
+    "seasonal": {
+      "mae": 0.0,
+      "rmse": 0.0
+    }
+  },
+  "o3": {
+    "persistence": {
+      "mae": 0.0,
+      "rmse": 0.0
+    },
+    "seasonal": {
+      "mae": 0.0,
+      "rmse": 0.0
+    }
+  },
+  "no2": {
+    "persistence": {
+      "mae": 0.0,
+      "rmse": 0.0
+    },
+    "seasonal": {
+      "mae": 0.0,
+      "rmse": 0.0
+    }
+  }
+}

@@ -5,6 +5,7 @@ point is flagged ``interpolated=True`` — a flag that survives to the API and U
 longer than the limit are left as gaps (shown as gaps, never invented).
 """
 
+import itertools
 from datetime import timedelta
 
 from app.constants import EXPECTED_FREQ_HOURS, MAX_INTERPOLATION_GAP_HOURS
@@ -26,7 +27,7 @@ def interpolate_series(
     for points in series.values():
         points.sort(key=lambda m: m.ts)
         out.extend(points)
-        for prev, curr in zip(points, points[1:], strict=False):
+        for prev, curr in itertools.pairwise(points):
             missing = int((curr.ts - prev.ts) / step) - 1
             if missing < 1 or missing > max_gap_hours:
                 continue  # contiguous, or too long to fill — leave the gap

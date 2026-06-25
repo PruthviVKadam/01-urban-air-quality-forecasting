@@ -6,9 +6,10 @@ from pathlib import Path
 from app.ingestion.providers.base import WeatherObservation
 from app.ingestion.weather_store import WeatherStore
 
+
 def test_weather_store_idempotent_upsert(tmp_path: Path) -> None:
     store = WeatherStore(tmp_path / "weather.parquet")
-    
+
     # 1. Insert initial
     obs1 = [
         WeatherObservation(
@@ -22,11 +23,11 @@ def test_weather_store_idempotent_upsert(tmp_path: Path) -> None:
     ]
     assert store.upsert(obs1) == 1
     assert store.count() == 1
-    
+
     # 2. Upsert same (idempotent)
     assert store.upsert(obs1) == 1
     assert store.count() == 1
-    
+
     # 3. Upsert update (different values, same key)
     obs1_updated = [
         WeatherObservation(
@@ -40,7 +41,7 @@ def test_weather_store_idempotent_upsert(tmp_path: Path) -> None:
     ]
     assert store.upsert(obs1_updated) == 1
     assert store.count() == 1
-    
+
     # 4. Insert new
     obs2 = [
         WeatherObservation(
@@ -54,7 +55,7 @@ def test_weather_store_idempotent_upsert(tmp_path: Path) -> None:
     ]
     assert store.upsert(obs2) == 2
     assert store.count() == 2
-    
+
     # 5. Read back
     read_obs = store.read(station_id="s1")
     assert len(read_obs) == 2

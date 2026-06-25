@@ -16,9 +16,7 @@ REQUEST_ID_HEADER = "X-Request-ID"
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
         set_request_id(request_id)
         request.state.request_id = request_id
@@ -26,16 +24,16 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         response.headers[REQUEST_ID_HEADER] = request_id
         return response
 
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
-        from app.cache import is_rate_limited
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         from fastapi.responses import JSONResponse
-        
+
+        from app.cache import is_rate_limited
+
         # Extract IP, fallback to 127.0.0.1
         client_ip = request.client.host if request.client else "127.0.0.1"
-        
+
         # 120 requests per minute
         if is_rate_limited(client_ip, max_requests=120, window_seconds=60):
             return JSONResponse(
@@ -43,8 +41,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 content={
                     "error": "rate_limit_exceeded",
                     "code": "http_429",
-                    "detail": "Too many requests. Please try again later."
-                }
+                    "detail": "Too many requests. Please try again later.",
+                },
             )
-            
+
         return await call_next(request)

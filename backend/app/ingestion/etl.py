@@ -5,7 +5,6 @@ offline sensor never blanks the map).
 """
 
 import logging
-import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -27,7 +26,6 @@ from app.ingestion.storage import (
 )
 from app.ingestion.validation import validate_batch
 from app.ingestion.weather_store import WeatherStore
-from app.schemas import Pollutant
 
 logger = logging.getLogger("uaqf.ingestion.etl")
 
@@ -105,7 +103,9 @@ def run_etl(since: datetime, until: datetime) -> IngestionReport:
                     all_measurements.extend(parse_res.measurements)
                     station_report.fetched += len(parse_res.measurements)
                 except Exception as e:
-                    logger.warning("openaq_fetch_failed", extra={"station": station_id, "error": str(e)})
+                    logger.warning(
+                        "openaq_fetch_failed", extra={"station": station_id, "error": str(e)}
+                    )
                     station_report.errors.append(f"OpenAQ {sensor.pollutant.value}: {e}")
 
             # 2. Fetch from Open-Meteo (weather features)
@@ -123,21 +123,23 @@ def run_etl(since: datetime, until: datetime) -> IngestionReport:
                     forecast_days=forecast_days,
                 )
                 raw_store.write_raw("open-meteo", station_id, "forecast", fetch_res.data)
-                
+
                 # Filter strictly to our window
                 weather_obs = [o for o in weather_obs if since <= o.ts <= until]
-                
+
                 weather_store.upsert(weather_obs)
                 station_report.weather_fetched += len(weather_obs)
             except Exception as e:
-                logger.warning("openmeteo_fetch_failed", extra={"station": station_id, "error": str(e)})
+                logger.warning(
+                    "openmeteo_fetch_failed", extra={"station": station_id, "error": str(e)}
+                )
                 station_report.errors.append(f"Open-Meteo: {e}")
 
             # 3. AirNow Enrichment (optional)
             # This fetches current data. We run it to ensure it is cached/tested,
             # and could merge it with latest measurements.
             try:
-                fetch_res, airnow_obs = airnow_client.fetch_current(
+                fetch_res, _airnow_obs = airnow_client.fetch_current(
                     entry.latitude, entry.longitude, station_id=station_id
                 )
                 raw_store.write_raw("airnow", station_id, "current", fetch_res.data)
@@ -151,13 +153,13 @@ def run_etl(since: datetime, until: datetime) -> IngestionReport:
                 val_report = validate_batch(all_measurements)
                 station_report.quarantined = val_report.quarantined_count
                 station_report.gaps_found = len(val_report.gaps)
-                
+
                 if val_report.quarantined_count > 0:
                     quarantine_store.append(val_report.quarantined)
 
                 # 5. Interpolate (with flags)
                 interpolated_series = interpolate_series(val_report.accepted)
-                
+
                 # Count newly added points by comparing lengths
                 station_report.interpolated = len(interpolated_series) - len(val_report.accepted)
                 station_report.accepted = len(interpolated_series)
@@ -168,18 +170,19 @@ def run_etl(since: datetime, until: datetime) -> IngestionReport:
     # 7. Update ML Features
     try:
         from app.modeling.features import build_features
-        build_features()
+
+        build_features(data_dir)
         logger.info("features_rebuilt")
     except Exception as e:
         logger.error("features_rebuild_failed", extra={"error": str(e)})
 
     report.end_time = datetime.now(UTC)
-    
+
     logger.info(
         "etl_completed",
         extra={
             "duration_s": round(report.duration_s, 2),
             "stations_processed": len(registry),
-        }
+        },
     )
     return report

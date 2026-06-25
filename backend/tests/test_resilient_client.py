@@ -4,7 +4,6 @@ from random import Random
 
 import httpx
 import pytest
-
 from app.config import ProviderConfig
 from app.ingestion.cache import LastKnownGoodCache
 from app.ingestion.circuit_breaker import BreakerState, CircuitBreaker

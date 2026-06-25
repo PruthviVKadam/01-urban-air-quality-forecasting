@@ -6,7 +6,6 @@ Usage:
 """
 
 import argparse
-import asyncio
 import logging
 import sys
 from datetime import UTC, datetime, timedelta
@@ -36,7 +35,7 @@ def main() -> None:
     since = now - timedelta(hours=args.lookback_hours)
 
     logger.info("manual_etl_started", extra={"since": since.isoformat(), "until": now.isoformat()})
-    
+
     try:
         report = run_etl(since, now)
         logger.info(
@@ -49,7 +48,7 @@ def main() -> None:
         for station_id, sr in report.stations.items():
             if sr.errors:
                 logger.error(f"Station {station_id} had errors: {sr.errors}")
-    except Exception as e:
+    except Exception:
         logger.exception("manual_etl_failed")
         sys.exit(1)
 

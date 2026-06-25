@@ -5,7 +5,6 @@ than feeding the concentration pipeline. Treated as optional: the app still fore
 AirNow is down.
 """
 
-from datetime import datetime
 from typing import Any
 
 from app.ingestion.providers.base import AqiObservation

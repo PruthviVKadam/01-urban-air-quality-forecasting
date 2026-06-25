@@ -1,9 +1,11 @@
 """FastAPI application entrypoint: middleware, uniform error envelope, routers."""
 
+import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -13,8 +15,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
 from app.config import get_settings
+from app.ingestion.etl import run_etl
 from app.logging_config import configure_logging
-from app.middleware import RequestIdMiddleware
+from app.middleware import RateLimitMiddleware, RequestIdMiddleware
 from app.request_context import get_request_id
 from app.routers import forecast, health, stations
 from app.schemas import ErrorResponse
@@ -24,55 +27,52 @@ configure_logging(settings.log_level)
 logger = logging.getLogger("uaqf")
 
 
-import asyncio
-from datetime import UTC, datetime, timedelta
-from app.ingestion.etl import run_etl
-
 async def _ingestion_loop() -> None:
     # Brief initial delay so the app responds to /health immediately
     await asyncio.sleep(5)
     while True:
         try:
-            logger.info("ingestion_starting", extra={"lookback_hours": settings.ingestion_lookback_hours})
+            logger.info(
+                "ingestion_starting", extra={"lookback_hours": settings.ingestion_lookback_hours}
+            )
             now = datetime.now(UTC)
             since = now - timedelta(hours=settings.ingestion_lookback_hours)
-            
+
             # run_etl is synchronous, run it in a thread
             report = await asyncio.to_thread(run_etl, since, now)
-            
+
             # Save latest refresh details on app state
             app.state.last_refresh = report.end_time
             app.state.last_ingestion_report = report
-            
+
         except asyncio.CancelledError:
             break
         except Exception as e:
             logger.exception("ingestion_failed_unexpectedly", extra={"error": str(e)})
-            
+
         # Wait for next interval
         await asyncio.sleep(settings.ingestion_interval_minutes * 60)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.start_time = time.monotonic()
     app.state.last_refresh = None
     app.state.last_ingestion_report = None
-    
+
     logger.info("startup", extra={"app_env": settings.app_env, "version": __version__})
-    
+
     task = None
     if settings.ingestion_enabled:
         task = asyncio.create_task(_ingestion_loop())
-        
+
     yield
-    
+
     if task:
         task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
-            
+
     logger.info("shutdown")
 
 
@@ -88,8 +88,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-from app.middleware import RequestIdMiddleware, RateLimitMiddleware
-
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
@@ -102,9 +100,7 @@ app.add_middleware(
 
 
 def _error(status_code: int, error: str, code: str, detail: str | None) -> JSONResponse:
-    body = ErrorResponse(
-        error=error, code=code, detail=detail, request_id=get_request_id()
-    )
+    body = ErrorResponse(error=error, code=code, detail=detail, request_id=get_request_id())
     return JSONResponse(status_code=status_code, content=body.model_dump(mode="json"))
 
 

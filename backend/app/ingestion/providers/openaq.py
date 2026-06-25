@@ -57,9 +57,7 @@ def parse_openaq_measurements(payload: Any, station_id: str) -> ParseResult:
             )
             ts = floor_to_hour(_extract_ts(result))
             value = float(result["value"])
-            out.measurements.append(
-                Measurement(station_id, pollutant, ts, value, units, "openaq")
-            )
+            out.measurements.append(Measurement(station_id, pollutant, ts, value, units, "openaq"))
         except (KeyError, TypeError, ValueError):
             out.skipped += 1
     return out

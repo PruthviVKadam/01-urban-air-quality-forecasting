@@ -5,6 +5,7 @@ never silently dropped. Duplicate timestamps are collapsed (last wins). Gaps are
 and reported so interpolation can decide what is fillable.
 """
 
+import itertools
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -43,9 +44,7 @@ def _series_key(m: Measurement) -> tuple[str, Pollutant]:
     return (m.station_id, m.pollutant)
 
 
-def _range_reason(
-    m: Measurement, bounds: dict[Pollutant, tuple[float, float]]
-) -> str | None:
+def _range_reason(m: Measurement, bounds: dict[Pollutant, tuple[float, float]]) -> str | None:
     if m.value is None or not math.isfinite(m.value):
         return "non_finite_value"
     low, high = bounds.get(m.pollutant, (0.0, math.inf))
@@ -77,7 +76,7 @@ def _detect_gaps(records: list[Measurement]) -> list[Gap]:
     gaps: list[Gap] = []
     for (station_id, pollutant), points in series.items():
         points.sort(key=lambda m: m.ts)
-        for prev, curr in zip(points, points[1:], strict=False):
+        for prev, curr in itertools.pairwise(points):
             missing = int((curr.ts - prev.ts) / step) - 1
             if missing >= 1:
                 gaps.append(

@@ -90,9 +90,7 @@ class ProcessedStore:
             keys = sorted(
                 {(m.station_id, str(m.pollutant), _naive_utc(m.ts)) for m in measurements}
             )
-            con.executemany(
-                "DELETE FROM m WHERE station_id = ? AND pollutant = ? AND ts = ?", keys
-            )
+            con.executemany("DELETE FROM m WHERE station_id = ? AND pollutant = ? AND ts = ?", keys)
             con.executemany(
                 "INSERT INTO m VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
@@ -197,9 +195,7 @@ class QuarantineStore:
         try:
             con.execute(_QUARANTINE_DDL)
             if self._path.exists():
-                con.execute(
-                    f"INSERT INTO q SELECT * FROM read_parquet('{self._path.as_posix()}')"
-                )
+                con.execute(f"INSERT INTO q SELECT * FROM read_parquet('{self._path.as_posix()}')")
             con.executemany(
                 "INSERT INTO q VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [

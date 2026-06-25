@@ -7,9 +7,7 @@ from datetime import UTC, datetime
 
 from app.request_context import get_request_id
 
-_RESERVED = set(
-    logging.makeLogRecord({}).__dict__.keys()
-) | {"message", "asctime", "taskName"}
+_RESERVED = set(logging.makeLogRecord({}).__dict__.keys()) | {"message", "asctime", "taskName"}
 
 
 class JsonFormatter(logging.Formatter):
