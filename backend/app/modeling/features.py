@@ -112,9 +112,10 @@ def build_features(data_dir: Path) -> Path:
         con.execute(f"COPY ({query}) TO '{output_path.as_posix()}' (FORMAT PARQUET)")
 
         # Get count
-        count = con.execute(
+        row = con.execute(
             f"SELECT count(*) FROM read_parquet('{output_path.as_posix()}')"
-        ).fetchone()[0]
+        ).fetchone()
+        count = int(row[0]) if row else 0
         logger.info("features_built", extra={"rows": count, "path": output_path.as_posix()})
 
         return output_path

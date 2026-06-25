@@ -4,6 +4,7 @@
 import json
 import logging
 import sys
+from typing import Any
 
 import joblib
 import pandas as pd
@@ -37,7 +38,7 @@ def prepare_training_data(df: pd.DataFrame, target_col: str, horizons: list[int]
 
 def train_and_evaluate(
     df: pd.DataFrame, target_col: str
-) -> tuple[HistGradientBoostingRegressor, dict, dict]:
+) -> tuple[HistGradientBoostingRegressor, dict[str, Any], dict[str, Any]]:
     """Trains a model and evaluates it on a time-based holdout (last 20% of time)."""
     horizons = list(range(1, 25))
 
@@ -112,7 +113,7 @@ def train_and_evaluate(
     model.fit(X_train, y_train)
 
     # 3. Evaluate on Holdout
-    metrics = {"mae": {}, "rmse": {}, "exceedance_recall": {}}
+    metrics: dict[str, dict[str, float]] = {"mae": {}, "rmse": {}, "exceedance_recall": {}}
 
     if len(X_test) > 0:
         y_pred = model.predict(X_test)

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.aqi import aqi_for, category_from_aqi
 from app.cache import ttl_cache
 from app.config import Settings, get_settings
+from app.ingestion.models import Measurement
 from app.ingestion.station_registry import get_registry
 from app.ingestion.storage import ProcessedStore, default_data_dir
 from app.schemas import (
@@ -57,7 +58,7 @@ def get_forecast(
         measurements = store.read(station_id=station_id)
 
         if measurements:
-            latest_by_pol = {}
+            latest_by_pol: dict[Pollutant, Measurement] = {}
             for m in measurements:
                 if m.pollutant not in latest_by_pol or m.ts > latest_by_pol[m.pollutant].ts:
                     latest_by_pol[m.pollutant] = m

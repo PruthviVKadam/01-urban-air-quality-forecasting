@@ -1,6 +1,7 @@
 """Integration tests for the ETL orchestrator."""
 
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import patch
 
 from app.ingestion.etl import run_etl
@@ -13,7 +14,7 @@ from app.ingestion.resilient_client import FetchResult
 from app.schemas import Pollutant
 
 
-def test_etl_orchestrator(tmp_path) -> None:
+def test_etl_orchestrator(tmp_path: Path) -> None:
     # Patch default data dir so we use tmp_path
     with patch("app.ingestion.etl.default_data_dir", return_value=tmp_path):
         # Mock the registry to have only one station to speed up test

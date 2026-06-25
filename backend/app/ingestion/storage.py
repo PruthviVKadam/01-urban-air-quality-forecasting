@@ -107,7 +107,8 @@ class ProcessedStore:
                 ],
             )
             con.execute(f"COPY m TO '{self._path.as_posix()}' (FORMAT PARQUET)")
-            return int(con.execute("SELECT count(*) FROM m").fetchone()[0])
+            row = con.execute("SELECT count(*) FROM m").fetchone()
+            return int(row[0]) if row else 0
         finally:
             con.close()
 
@@ -171,11 +172,10 @@ class ProcessedStore:
             return 0
         con = duckdb.connect()
         try:
-            return int(
-                con.execute(
-                    f"SELECT count(*) FROM read_parquet('{self._path.as_posix()}')"
-                ).fetchone()[0]
-            )
+            row = con.execute(
+                f"SELECT count(*) FROM read_parquet('{self._path.as_posix()}')"
+            ).fetchone()
+            return int(row[0]) if row else 0
         finally:
             con.close()
 
@@ -212,7 +212,8 @@ class QuarantineStore:
                 ],
             )
             con.execute(f"COPY q TO '{self._path.as_posix()}' (FORMAT PARQUET)")
-            return int(con.execute("SELECT count(*) FROM q").fetchone()[0])
+            row = con.execute("SELECT count(*) FROM q").fetchone()
+            return int(row[0]) if row else 0
         finally:
             con.close()
 
@@ -221,10 +222,9 @@ class QuarantineStore:
             return 0
         con = duckdb.connect()
         try:
-            return int(
-                con.execute(
-                    f"SELECT count(*) FROM read_parquet('{self._path.as_posix()}')"
-                ).fetchone()[0]
-            )
+            row = con.execute(
+                f"SELECT count(*) FROM read_parquet('{self._path.as_posix()}')"
+            ).fetchone()
+            return int(row[0]) if row else 0
         finally:
             con.close()

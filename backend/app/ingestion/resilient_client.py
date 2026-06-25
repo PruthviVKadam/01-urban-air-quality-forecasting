@@ -75,7 +75,7 @@ class ResilientHttpClient:
 
     def _backoff(self, attempt: int) -> float:
         # Exponential base with full jitter: base * 2**attempt * U(0.5, 1.5).
-        return self._config.backoff_base_s * (2**attempt) * (0.5 + self._rng.random())
+        return float(self._config.backoff_base_s * (2**attempt) * (0.5 + self._rng.random()))
 
     def _serve_stale(self, cache_key: str) -> FetchResult | None:
         entry = self._cache.get(cache_key)

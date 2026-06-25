@@ -8,10 +8,10 @@ from typing import Any
 _cache: dict[str, tuple[float, Any]] = {}
 
 
-def ttl_cache(ttl_seconds: int = 300) -> Callable:
+def ttl_cache(ttl_seconds: int = 300) -> Callable[..., Any]:
     """A simple in-memory TTL cache decorator for synchronous or async functions."""
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             # Create a cache key from func name and arguments.

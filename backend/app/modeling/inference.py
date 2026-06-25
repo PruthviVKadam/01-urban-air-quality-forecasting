@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import joblib
@@ -17,14 +18,14 @@ logger = logging.getLogger("uaqf.modeling.inference")
 class InferenceEngine:
     """Loads trained models and executes forecasting logic."""
 
-    def __init__(self, data_dir: Path | None = None):
+    def __init__(self, data_dir: Path | None = None) -> None:
         self.data_dir = data_dir or default_data_dir()
         self.models_dir = self.data_dir.parent / "models"
         self.features_path = self.data_dir / "features" / "features.parquet"
         self.registry_path = self.models_dir / "registry.json"
 
-        self.models = {}
-        self.registry = {}
+        self.models: dict[str, Any] = {}
+        self.registry: dict[str, Any] = {}
         self._load_registry()
         self._load_models()
 

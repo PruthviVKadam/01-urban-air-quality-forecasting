@@ -10,7 +10,7 @@ from app.ingestion.circuit_breaker import BreakerState, CircuitBreaker
 from app.ingestion.errors import CircuitOpenError, UpstreamError
 from app.ingestion.resilient_client import ResilientHttpClient
 
-ScriptItem = tuple[int, dict] | Exception
+ScriptItem = tuple[int, dict[str, str | int]] | Exception
 
 
 def make_transport(script: Iterable[ScriptItem]) -> tuple[httpx.MockTransport, list[int]]:
