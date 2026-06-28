@@ -30,10 +30,15 @@ data/processed/*
 data/cache/*
 !data/**/.gitkeep
 
-# --- Models & experiment tracking (ship the model card, not the weights) ---
+# --- Models & experiment tracking (ship the evidence, not the weights) ---
+# The model card + registry (metrics, beats_baseline verdict, training window) are the
+# committed proof of gate G2; the multi-megabyte .joblib weights are rebuilt locally by
+# `scripts/seed_and_train.py`.
 models/*
 !models/.gitkeep
 !models/MODEL_CARD.md
+!models/registry.json
+*.joblib
 mlruns/
 
 # --- OS / editor ---
