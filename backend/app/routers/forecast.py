@@ -1,7 +1,10 @@
 """Per-station, per-pollutant forecast endpoint.
 
-In Phase 1, we still rely on the seed model logic (persistence baseline) to generate
-the forecast shape, but we feed it the LIVE data from the ProcessedStore.
+Serves cached forecasts from the latest stored features (never blocking on a live upstream
+— HL5). A certified ML model is used only for pollutants the committed evaluation proved
+beat both baselines (HL2); everything else degrades to the honest persistence forecast. The
+freshness timestamp, stale flag, interpolation flags, and baseline shadow ride on every
+response so the UI can never render a number without its provenance.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -12,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.aqi import aqi_for, category_from_aqi
 from app.cache import ttl_cache
 from app.config import Settings, get_settings
+from app.constants import DISCLAIMER
 from app.ingestion.models import Measurement
 from app.ingestion.station_registry import get_registry
 from app.ingestion.storage import ProcessedStore, default_data_dir
@@ -112,48 +116,43 @@ def get_forecast(
             status_code=404, detail=f"station '{station_id}' does not report {pollutant.value}"
         )
 
-    # Phase 4: Serving Layer Inference
-    # Attempt ML forecast
-    forecast_points = []
-    beats_baseline = False
-    model_version = "seed"
-    disclaimer = "Not intended for medical guidance."
+    # Phase 4: serving-layer inference.
+    #
+    # HL2 is enforced structurally here: the ML model is served *only* for a pollutant the
+    # committed walk-forward evaluation certified as beating both baselines at every horizon
+    # (``registry.json`` → ``beats_baseline``). For any other pollutant — or if the model or
+    # features are unavailable — we fall back to the honest persistence forecast with
+    # ``beats_baseline=False``. ``beats_baseline`` is *read*, never asserted, so a model that
+    # does not beat persistence can never reach production claiming that it does.
+    import logging
+
+    logger = logging.getLogger("uaqf.forecast")
 
     try:
         from app.modeling.inference import get_inference_engine
 
         engine = get_inference_engine()
+        if not (engine.has_model(pollutant) and engine.beats_baseline(pollutant)):
+            return build_seed_forecast(station, pollutant, horizon)
+
         ml_preds = engine.predict(station_id, pollutant, horizon)
-
-        # Build ForecastPoints
-        for _i, (ts, val, lower, upper) in enumerate(ml_preds):
-            # For baseline comparison, we can use persistence (last observed value)
-            persistence_val = station.latest[0].value if station.latest else 0.0
-
-            point = ForecastPoint(
+        persistence_val = station.latest[0].value if station.latest else 0.0
+        forecast_points = [
+            ForecastPoint(
                 ts=ts,
                 value=val,
                 lower=lower,
                 upper=upper,
-                baseline=persistence_val,
+                baseline=persistence_val,  # HL2 — persistence shadow on every point
                 aqi=aqi_for(pollutant, val),
                 category=category_from_aqi(aqi_for(pollutant, val)),
                 interpolated=station.latest[0].interpolated if station.latest else False,
             )
-            forecast_points.append(point)
-
-        beats_baseline = True
-        model_version = "v1-hist-gbdt"
-
+            for ts, val, lower, upper in ml_preds
+        ]
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger("uaqf.forecast")
         logger.warning("inference_fallback", extra={"station": station_id, "error": str(e)})
-
-        # Fallback to baseline (Persistence via build_seed_forecast)
-        seed_resp = build_seed_forecast(station, pollutant, horizon)
-        return seed_resp
+        return build_seed_forecast(station, pollutant, horizon)
 
     return ForecastResponse(
         station_id=station.id,
@@ -165,9 +164,9 @@ def get_forecast(
         data_as_of=station.data_as_of,
         stale=station.stale,
         data_source=station.data_source,
-        model_version=model_version,
+        model_version=engine.model_version(pollutant),
         baseline_label="persistence",
-        beats_baseline=beats_baseline,
-        disclaimer=disclaimer,
+        beats_baseline=engine.beats_baseline(pollutant),
+        disclaimer=DISCLAIMER,
         points=forecast_points,
     )

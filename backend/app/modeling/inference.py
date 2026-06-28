@@ -1,4 +1,15 @@
-"""ML inference engine for forecasting."""
+"""ML inference engine for forecasting.
+
+Loads the committed per-pollutant, per-horizon residual models and the registry, and turns
+the latest stored feature row into a forecast. Two honesty rules are enforced here so the
+serving layer can never drift from the evidence:
+
+* The model predicts a *residual* (change from the current value); the level is reconstructed
+  as ``current + Δ̂`` and floored at zero — the same reconstruction used during evaluation.
+* ``beats_baseline`` and ``model_version`` are read straight from ``registry.json`` (the
+  committed walk-forward evaluation). The engine never asserts a model beats the baseline
+  on its own — if the registry says it does not, the API will say so too (HL2).
+"""
 
 import json
 import logging
@@ -10,6 +21,8 @@ import duckdb
 import joblib
 import pandas as pd
 from app.ingestion.storage import default_data_dir
+from app.modeling.cv import feature_columns
+from app.modeling.train import MODEL_VERSION
 from app.schemas import Pollutant
 
 logger = logging.getLogger("uaqf.modeling.inference")
@@ -24,7 +37,8 @@ class InferenceEngine:
         self.features_path = self.data_dir / "features" / "features.parquet"
         self.registry_path = self.models_dir / "registry.json"
 
-        self.models: dict[str, Any] = {}
+        # Per pollutant: a {horizon: estimator} dict (direct multi-step models).
+        self.models: dict[str, dict[int, Any]] = {}
         self.registry: dict[str, Any] = {}
         self._load_registry()
         self._load_models()
@@ -41,124 +55,91 @@ class InferenceEngine:
             model_file = self.models_dir / f"{pol.value}_model.joblib"
             if model_file.exists():
                 try:
-                    self.models[pol.value] = joblib.load(model_file)
+                    loaded = joblib.load(model_file)
+                    # Stored as {horizon: estimator}; keys may deserialize as str.
+                    self.models[pol.value] = {int(h): est for h, est in loaded.items()}
                 except Exception as e:
                     logger.warning(
                         "failed_to_load_model", extra={"pollutant": pol.value, "error": str(e)}
                     )
 
-    def _get_historical_rmse(self, pollutant: str, horizon: int) -> float:
-        """Fallback to 5.0 if not found."""
+    def has_model(self, pollutant: Pollutant) -> bool:
+        return bool(self.models.get(pollutant.value))
+
+    def beats_baseline(self, pollutant: Pollutant) -> bool:
+        """Read the committed verdict — never recomputed or assumed (HL2)."""
+        return bool(self.registry.get(pollutant.value, {}).get("beats_baseline", False))
+
+    def model_version(self, pollutant: Pollutant) -> str:
+        return str(self.registry.get(pollutant.value, {}).get("model_version", MODEL_VERSION))
+
+    def _historical_rmse(self, pollutant: str, horizon: int) -> float:
+        """Per-horizon holdout RMSE from the registry; falls back to a wide band."""
         try:
-            val = (
-                self.registry.get(pollutant, {})
-                .get("metrics", {})
-                .get("rmse", {})
-                .get(str(horizon))
-            )
+            val = self.registry[pollutant]["metrics"]["rmse"].get(str(horizon))
             if val is not None:
                 return float(val)
         except Exception:
             pass
         return 5.0
 
+    def _latest_feature_row(self, station_id: str) -> pd.Series:
+        if not self.features_path.exists():
+            raise FileNotFoundError("Features parquet not found.")
+        con = duckdb.connect()
+        try:
+            df = con.execute(
+                f"SELECT * FROM read_parquet('{self.features_path.as_posix()}') "
+                "WHERE station_id = ? ORDER BY ts DESC LIMIT 1",
+                [station_id],
+            ).df()
+        finally:
+            con.close()
+        if len(df) == 0:
+            raise ValueError(f"No features found for station {station_id}")
+        return df.iloc[0]
+
     def predict(
         self, station_id: str, pollutant: Pollutant, horizon_hours: int
     ) -> list[tuple[datetime, float, float, float]]:
+        """Forecast horizons 1..horizon_hours.
+
+        Returns ``(target_ts, value, lower, upper)`` tuples. The value is the residual model's
+        ``current + Δ̂`` reconstruction, floored at zero; the band is +/-1.96 x the per-horizon
+        holdout RMSE.
         """
-        Runs ML prediction for horizons 1..horizon_hours.
-        Returns: list of (target_ts, predicted_value, lower_bound, upper_bound)
-        """
-        if pollutant.value not in self.models:
+        models = self.models.get(pollutant.value)
+        if not models:
             raise ValueError(f"No trained model for {pollutant.value}")
 
-        if not self.features_path.exists():
-            raise FileNotFoundError("Features parquet not found.")
-
-        # 1. Fetch the LATEST feature row for the station
-        con = duckdb.connect()
-        try:
-            # We want the single most recent row for the station
-            query = f"""
-                SELECT * FROM read_parquet('{self.features_path.as_posix()}')
-                WHERE station_id = '{station_id}'
-                ORDER BY ts DESC
-                LIMIT 1
-            """
-            df_latest = con.execute(query).df()
-        finally:
-            con.close()
-
-        if len(df_latest) == 0:
-            raise ValueError(f"No features found for station {station_id}")
-
-        latest_row = df_latest.iloc[0]
-        base_ts = latest_row["ts"]
-
-        # Ensure base_ts has timezone info
+        latest = self._latest_feature_row(station_id)
+        base_ts = latest["ts"]
         if base_ts.tzinfo is None:
             base_ts = base_ts.replace(tzinfo=UTC)
+        current = float(latest[pollutant.value])
 
-        # 2. Extract features exactly as trained
-        try:
-            feature_cols = self.registry[pollutant.value]["training_params"]["features"]
-        except KeyError:
-            # Fallback if registry is missing or malformed
-            feature_cols = [
-                "sin_hour",
-                "cos_hour",
-                "sin_dow",
-                "cos_dow",
-                f"{pollutant.value}_lag_1h",
-                f"{pollutant.value}_lag_24h",
-                f"{pollutant.value}_roll_mean_24h",
-                "temperature_c",
-                "humidity_pct",
-                "wind_speed_ms",
-                "pressure_hpa",
-                "horizon",
-            ]
-
-        # 3. Create prediction batch for h=1..horizon_hours
-        batch_rows = []
-        target_timestamps = []
-
+        feat_cols = feature_columns(pollutant.value)
+        results: list[tuple[datetime, float, float, float]] = []
         for h in range(1, horizon_hours + 1):
-            row_dict = latest_row.to_dict()
-            row_dict["horizon"] = h
-            batch_rows.append(row_dict)
-            target_timestamps.append(base_ts + pd.Timedelta(hours=h))
+            model = models.get(h)
+            if model is None:
+                raise ValueError(f"No model for {pollutant.value} horizon {h}")
+            row = latest.to_dict()
+            row["horizon"] = h
+            frame = pd.DataFrame([row])
+            delta = float(model.predict(frame[feat_cols])[0])
+            value = max(0.0, current + delta)
 
-        df_batch = pd.DataFrame(batch_rows)
-
-        # Verify no NaN in essential features except maybe weather which HistGradientBoosting can handle
-        # But if the pollutant lag is NaN, we might have an issue.
-        # HistGradientBoostingRegressor natively supports NaNs!
-        X = df_batch[feature_cols]
-
-        # 4. Predict
-        model = self.models[pollutant.value]
-        preds = model.predict(X)
-
-        # 5. Format results
-        results = []
-        for i, h in enumerate(range(1, horizon_hours + 1)):
-            pred_val = float(preds[i])
-            # Ensure no negative predictions (Poisson/Squared error might dip < 0)
-            pred_val = max(0.0, pred_val)
-
-            rmse = self._get_historical_rmse(pollutant.value, h)
-            # 95% CI ~ +/- 1.96 * RMSE
-            lower = max(0.0, pred_val - (1.96 * rmse))
-            upper = pred_val + (1.96 * rmse)
-
-            results.append((target_timestamps[i], pred_val, lower, upper))
+            rmse = self._historical_rmse(pollutant.value, h)
+            lower = max(0.0, value - 1.96 * rmse)
+            upper = value + 1.96 * rmse
+            results.append((base_ts + pd.Timedelta(hours=h), value, lower, upper))
 
         return results
 
 
 # Singleton engine (lazy loaded)
-_engine = None
+_engine: InferenceEngine | None = None
 
 
 def get_inference_engine() -> InferenceEngine:
